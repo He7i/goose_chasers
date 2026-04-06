@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.local
+.env.*.local
+dist/
+build/
+uploads/
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+client/build/
+client/node_modules/
+server/node_modules/

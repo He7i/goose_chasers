@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: easter_hunt_db
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: easter_hunt
+      MYSQL_USER: easter_user
+      MYSQL_PASSWORD: easter_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./server/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  app:
+    build: .
+    container_name: easter_hunt_app
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: db
+      DB_USER: easter_user
+      DB_PASS: easter_pass
+      DB_NAME: easter_hunt
+      NODE_ENV: development
+      JWT_SECRET: dev_secret_key_change_in_production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./server:/app/server
+      - ./uploads:/app/uploads
+
+volumes:
+  mysql_data:
