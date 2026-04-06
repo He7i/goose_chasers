@@ -32,7 +32,6 @@ app.use('/api/hints', require('./routes/hints'));
 app.use('/api/qrcodes', require('./routes/qrcodes'));
 app.use('/api/teams', require('./routes/teams'));
 app.use('/api/found', require('./routes/found'));
-app.use('/api/admin', require('./routes/admin'));
 
 // Health check
 app.get('/api/health', (req, res) => {
