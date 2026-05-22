@@ -13,85 +13,70 @@ router.post('/record', async (req, res) => {
       return res.status(400).json({ error: 'Team ID and QR code required' });
     }
 
-    const connection = await pool.getConnection();
-
     // Find QR code
-    const [qrcodes] = await connection.query(
-      'SELECT qr_id FROM qr_codes WHERE code = ?',
+    const qrResult = await pool.query(
+      'SELECT qr_id FROM qr_codes WHERE code = $1',
       [qrCode]
     );
 
-    if (qrcodes.length === 0) {
-      connection.release();
+    if (qrResult.rows.length === 0) {
       return res.status(404).json({ error: 'QR code not found' });
     }
 
-    const qrId = qrcodes[0].qr_id;
+    const qrId = qrResult.rows[0].qr_id;
 
     // Find hint for this QR
-    const [hints] = await connection.query(
-      'SELECT hint_id, solution_qr_id FROM hints WHERE qr_id = ?',
+    const hintResult = await pool.query(
+      'SELECT hint_id, solution_qr_id FROM hints WHERE qr_id = $1',
       [qrId]
     );
 
-    if (hints.length === 0) {
-      connection.release();
+    if (hintResult.rows.length === 0) {
       return res.status(404).json({ error: 'No hint for this QR code' });
     }
 
-    const hint = hints[0];
-
     // Check if this is the solution QR for the current hint
-    const [currentHints] = await connection.query(
-      'SELECT current_hint_id FROM easter_teams WHERE team_id = ?',
+    const teamResult = await pool.query(
+      'SELECT current_hint_id FROM teams WHERE team_id = $1',
       [teamId]
     );
 
-    if (currentHints.length === 0) {
-      connection.release();
+    if (teamResult.rows.length === 0) {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    const currentHintId = currentHints[0].current_hint_id;
+    const currentHintId = teamResult.rows[0].current_hint_id;
 
     // Verify this QR is the solution for current hint
-    const [solutionCheck] = await connection.query(
-      'SELECT solution_qr_id FROM hints WHERE hint_id = ?',
+    const solutionResult = await pool.query(
+      'SELECT solution_qr_id FROM hints WHERE hint_id = $1',
       [currentHintId]
     );
 
-    if (solutionCheck.length === 0 || solutionCheck[0].solution_qr_id !== qrId) {
-      connection.release();
+    if (solutionResult.rows.length === 0 || solutionResult.rows[0].solution_qr_id !== qrId) {
       return res.status(400).json({ error: 'Incorrect QR code for current hint' });
     }
 
     // Record the found hint
-    try {
-      await connection.query(
-        'INSERT INTO found (team_id, hint_id) VALUES (?, ?)',
-        [teamId, currentHintId]
-      );
-    } catch (error) {
-      if (error.code !== 'ER_DUP_ENTRY') {
-        throw error;
-      }
-    }
+    await pool.query(
+      'INSERT INTO found_hints (team_id, hint_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [teamId, currentHintId]
+    );
 
     // Get found count
-    const [foundCounts] = await connection.query(
-      'SELECT COUNT(*) as cnt FROM found WHERE team_id = ?',
+    const countResult = await pool.query(
+      'SELECT COUNT(*) as cnt FROM found_hints WHERE team_id = $1',
       [teamId]
     );
 
-    const foundCount = foundCounts[0].cnt;
+    const foundCount = parseInt(countResult.rows[0].cnt);
 
     // Check if reached goal
     if (foundCount >= GOAL_HINTS) {
-      await connection.query(
-        'UPDATE easter_teams SET current_hint_id = NULL WHERE team_id = ?',
+      await pool.query(
+        'UPDATE teams SET current_hint_id = NULL WHERE team_id = $1',
         [teamId]
       );
-      connection.release();
       return res.json({
         success: true,
         found: true,
@@ -102,28 +87,26 @@ router.post('/record', async (req, res) => {
     }
 
     // Assign next hint (simplified - just get any unassigned hint)
-    const [nextHints] = await connection.query(
+    const nextResult = await pool.query(
       `SELECT hint_id FROM hints 
-       WHERE hint_id NOT IN (SELECT hint_id FROM found WHERE team_id = ?)
+       WHERE hint_id NOT IN (SELECT hint_id FROM found_hints WHERE team_id = $1)
        LIMIT 1`,
       [teamId]
     );
 
     let nextHintId = null;
-    if (nextHints.length > 0) {
-      nextHintId = nextHints[0].hint_id;
-      await connection.query(
-        'UPDATE easter_teams SET current_hint_id = ? WHERE team_id = ?',
+    if (nextResult.rows.length > 0) {
+      nextHintId = nextResult.rows[0].hint_id;
+      await pool.query(
+        'UPDATE teams SET current_hint_id = $1 WHERE team_id = $2',
         [nextHintId, teamId]
       );
     } else {
-      await connection.query(
-        'UPDATE easter_teams SET current_hint_id = NULL WHERE team_id = ?',
+      await pool.query(
+        'UPDATE teams SET current_hint_id = NULL WHERE team_id = $1',
         [teamId]
       );
     }
-
-    connection.release();
 
     res.json({
       success: true,

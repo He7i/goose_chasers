@@ -6,19 +6,16 @@ const pool = require('../db/connection');
 router.get('/:teamId', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const connection = await pool.getConnection();
-
-    const [teams] = await connection.query(
-      'SELECT team_id, team_name, current_hint_id FROM easter_teams WHERE team_id = ?',
+    const result = await pool.query(
+      'SELECT team_id, team_name, game_id FROM teams WHERE team_id = $1',
       [teamId]
     );
-    connection.release();
 
-    if (teams.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    res.json({ team: teams[0] });
+    res.json({ team: result.rows[0] });
   } catch (error) {
     console.error('Get team error:', error);
     res.status(500).json({ error: 'Failed to get team' });
@@ -29,19 +26,16 @@ router.get('/:teamId', async (req, res) => {
 router.get('/:teamId/found', async (req, res) => {
   try {
     const { teamId } = req.params;
-    const connection = await pool.getConnection();
-
-    const [found] = await connection.query(
-      `SELECT f.hint_id, h.qr_id 
-       FROM found f 
-       JOIN hints h ON f.hint_id = h.hint_id 
-       WHERE f.team_id = ? 
+    const result = await pool.query(
+      `SELECT f.hint_id
+       FROM found_hints f 
+       JOIN hints h ON f.hint_id = h.id 
+       WHERE f.team_id = $1 
        ORDER BY f.found_at DESC`,
       [teamId]
     );
-    connection.release();
 
-    res.json({ foundHints: found, foundCount: found.length });
+    res.json({ foundHints: result.rows, foundCount: result.rows.length });
   } catch (error) {
     console.error('Get found hints error:', error);
     res.status(500).json({ error: 'Failed to get found hints' });
@@ -51,18 +45,15 @@ router.get('/:teamId/found', async (req, res) => {
 // Get leaderboard
 router.get('/leaderboard/all', async (req, res) => {
   try {
-    const connection = await pool.getConnection();
-
-    const [leaderboard] = await connection.query(
+    const result = await pool.query(
       `SELECT t.team_id, t.team_name, COUNT(f.hint_id) as found_count 
-       FROM easter_teams t 
-       LEFT JOIN found f ON t.team_id = f.team_id 
+       FROM teams t 
+       LEFT JOIN found_hints f ON t.team_id = f.team_id 
        GROUP BY t.team_id, t.team_name 
-       ORDER BY found_count DESC, t.created_at ASC`
+       ORDER BY found_count DESC`
     );
-    connection.release();
 
-    res.json({ leaderboard });
+    res.json({ leaderboard: result.rows });
   } catch (error) {
     console.error('Get leaderboard error:', error);
     res.status(500).json({ error: 'Failed to get leaderboard' });

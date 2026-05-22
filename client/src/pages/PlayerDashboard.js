@@ -5,36 +5,52 @@ import {
   Box,
   Typography,
   Button,
-  Card,
-  CardContent,
-  Grid,
   AppBar,
   Toolbar,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  Drawer,
+  IconButton,
+  Badge,
+  Tabs,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Divider,
+  TextField,
 } from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import QRScanner from '../components/QRScanner';
 
-function PlayerDashboard({ onLogout }) {
+function PlayerDashboard({ onLogout, gameId, initialHint, gameName }) {
   const navigate = useNavigate();
   const teamId = localStorage.getItem('teamId');
-  const [currentHint, setCurrentHint] = useState(null);
+  const [currentHint, setCurrentHint] = useState(initialHint || null);
   const [foundHints, setFoundHints] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [showRaceModal, setShowRaceModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState(0);
+  const [answerTab, setAnswerTab] = useState(0);
+  const [textAnswer, setTextAnswer] = useState('');
 
   useEffect(() => {
+    if (!currentHint && gameId) {
+      axios.get(`/api/hints/next/${gameId}`)
+        .then(res => setCurrentHint(res.data.hint))
+        .catch(err => console.error('Fetch hint error:', err));
+    }
     fetchData();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
@@ -42,13 +58,11 @@ function PlayerDashboard({ onLogout }) {
 
   const fetchData = async () => {
     try {
-      const [hintRes, foundRes, leaderRes] = await Promise.all([
-        axios.get(`/api/hints/current/${teamId}`),
+      const [foundRes, leaderRes] = await Promise.all([
         axios.get(`/api/teams/${teamId}/found`),
         axios.get('/api/teams/leaderboard/all'),
       ]);
 
-      setCurrentHint(hintRes.data.hint);
       setFoundHints(foundRes.data.foundHints || []);
       setLeaderboard(leaderRes.data.leaderboard || []);
 
@@ -82,107 +96,158 @@ function PlayerDashboard({ onLogout }) {
     localStorage.removeItem('token');
     localStorage.removeItem('teamId');
     onLogout();
-    navigate('/login');
+    navigate('/');
   };
 
   return (
-    <Box>
-      <AppBar position="static">
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f5f5f5' }}>
+      {/* App Bar */}
+      <AppBar position="sticky">
         <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            🥚 Easter Hunt - Player Dashboard
+          <IconButton color="inherit" edge="start" onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
+            <Badge badgeContent={foundHints.length} color="secondary">
+              <MenuIcon />
+            </Badge>
+          </IconButton>
+          <Typography variant="h6" align="center" sx={{ flexGrow: 1 }}>
+            {gameName || 'Easter Hunt'}
           </Typography>
-          <Button color="inherit" onClick={handleLogout}>
+          <Button color="inherit" onClick={handleLogout} size="small">
             Logout
           </Button>
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Grid container spacing={3}>
-          {/* Current Hint */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                📍 Your Current Hint
+      {/* Main Content — stacked vertically */}
+      <Container maxWidth="sm" sx={{ py: 3 }}>
+        {/* Current Hint */}
+        <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+            📍 Current Hint
+          </Typography>
+          {currentHint ? (
+            <Box>
+              <Typography variant="body1" sx={{ mb: 2, fontSize: '1.1rem' }}>
+                {currentHint.text_hint}
               </Typography>
-              {currentHint ? (
-                <Box>
-                  <img
-                    src={`/api/hints/image/${currentHint.hint_id}`}
-                    alt="Current hint"
-                    style={{ width: '100%', height: 'auto', borderRadius: '8px', marginBottom: '16px' }}
-                  />
-                  <Typography variant="body2" color="textSecondary">
-                    Hint ID: {currentHint.hint_id}
-                  </Typography>
-                </Box>
-              ) : (
-                <Typography color="textSecondary">No hint assigned yet</Typography>
+              {currentHint.has_image && (
+                <img
+                  src={`/api/hints/image/${currentHint.id}`}
+                  alt="Hint"
+                  style={{ width: '100%', height: 'auto', borderRadius: '8px' }}
+                />
               )}
-            </Paper>
-          </Grid>
+            </Box>
+          ) : (
+            <Typography color="textSecondary">No hints available</Typography>
+          )}
+        </Paper>
 
-          {/* QR Scanner */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                📱 QR Scanner
-              </Typography>
+        {/* Solution Input */}
+        <Paper elevation={3} sx={{ overflow: 'hidden' }}>
+          <Tabs
+            value={answerTab}
+            onChange={(_, v) => setAnswerTab(v)}
+            variant="fullWidth"
+          >
+            <Tab label="📱 Scan QR" />
+            <Tab label="✏️ Text Answer" />
+          </Tabs>
+          <Box sx={{ p: 3 }}>
+            {answerTab === 0 && (
               <QRScanner onScan={handleQRScanned} disabled={loading} />
-            </Paper>
-          </Grid>
-
-          {/* Found Hints */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                ✅ Found Hints ({foundHints.length})
-              </Typography>
-              {foundHints.length > 0 ? (
-                <Box sx={{ maxHeight: '300px', overflow: 'auto' }}>
-                  {foundHints.map((hint, idx) => (
-                    <Box key={idx} sx={{ p: 1, borderBottom: '1px solid #eee' }}>
-                      <Typography variant="body2">Hint #{hint.hint_id}</Typography>
-                    </Box>
-                  ))}
-                </Box>
-              ) : (
-                <Typography color="textSecondary">No hints found yet</Typography>
-              )}
-            </Paper>
-          </Grid>
-
-          {/* Leaderboard */}
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                🏆 Leaderboard
-              </Typography>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                      <TableCell>Rank</TableCell>
-                      <TableCell>Team</TableCell>
-                      <TableCell align="right">Found</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {leaderboard.map((team, idx) => (
-                      <TableRow key={team.team_id} sx={{ bgcolor: team.team_id === parseInt(teamId) ? '#fff3e0' : 'white' }}>
-                        <TableCell>{idx + 1}</TableCell>
-                        <TableCell>{team.team_name}</TableCell>
-                        <TableCell align="right">{team.found_count}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          </Grid>
-        </Grid>
+            )}
+            {answerTab === 1 && (
+              <Box component="form" onSubmit={(e) => { e.preventDefault(); if (textAnswer.trim()) handleQRScanned(textAnswer.trim()); setTextAnswer(''); }}>
+                <TextField
+                  fullWidth
+                  label="Enter your answer"
+                  value={textAnswer}
+                  onChange={(e) => setTextAnswer(e.target.value)}
+                  disabled={loading}
+                  autoComplete="off"
+                />
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="primary"
+                  type="submit"
+                  disabled={!textAnswer.trim() || loading}
+                  sx={{ mt: 2 }}
+                >
+                  {loading ? 'Checking...' : 'Submit Answer'}
+                </Button>
+              </Box>
+            )}
+          </Box>
+        </Paper>
       </Container>
+
+      {/* Drawer for Found Hints & Leaderboard */}
+      <Drawer
+        anchor="bottom"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        PaperProps={{ sx: { maxHeight: '70vh', borderTopLeftRadius: 16, borderTopRightRadius: 16 } }}
+      >
+        <Box sx={{ px: 2, pt: 1 }}>
+          {/* Drag handle */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+            <Box sx={{ width: 40, height: 4, bgcolor: '#ccc', borderRadius: 2 }} />
+          </Box>
+
+          <Tabs
+            value={drawerTab}
+            onChange={(_, v) => setDrawerTab(v)}
+            variant="fullWidth"
+            sx={{ mb: 2 }}
+          >
+            <Tab icon={<CheckCircleIcon />} label={`Found (${foundHints.length})`} />
+            <Tab icon={<EmojiEventsIcon />} label="Leaderboard" />
+          </Tabs>
+
+          {/* Found Hints Tab */}
+          {drawerTab === 0 && (
+            <Box sx={{ pb: 3 }}>
+              {foundHints.length > 0 ? (
+                foundHints.map((hint, idx) => (
+                  <Box key={idx} sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
+                    <Typography variant="body2">Hint #{hint.hint_id}</Typography>
+                  </Box>
+                ))
+              ) : (
+                <Typography color="textSecondary" align="center" sx={{ py: 4 }}>
+                  No hints found yet — start scanning!
+                </Typography>
+              )}
+            </Box>
+          )}
+
+          {/* Leaderboard Tab */}
+          {drawerTab === 1 && (
+            <TableContainer sx={{ pb: 3 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                    <TableCell>Rank</TableCell>
+                    <TableCell>Team</TableCell>
+                    <TableCell align="right">Found</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {leaderboard.map((team, idx) => (
+                    <TableRow key={team.team_id} sx={{ bgcolor: team.team_id === teamId ? '#fff3e0' : 'white' }}>
+                      <TableCell>{idx + 1}</TableCell>
+                      <TableCell>{team.team_name}</TableCell>
+                      <TableCell align="right">{team.found_count}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Box>
+      </Drawer>
 
       {/* Race Modal */}
       <Dialog open={showRaceModal} onClose={() => setShowRaceModal(false)} maxWidth="sm" fullWidth>

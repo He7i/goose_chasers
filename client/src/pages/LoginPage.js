@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 
-function LoginPage({ onLogin }) {
+function LoginPage({ onLogin, gameId }) {
   const [tab, setTab] = useState(0);
   const [teamName, setTeamName] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +24,7 @@ function LoginPage({ onLogin }) {
     setLoading(true);
 
     try {
-      const response = await axios.post('/api/auth/login', { teamName });
+      const response = await axios.post('/api/auth/login', { teamName, gameId });
       onLogin(response.data.token, response.data.teamId, false);
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed');
@@ -39,7 +39,7 @@ function LoginPage({ onLogin }) {
     setLoading(true);
 
     try {
-      const response = await axios.post('/api/auth/register', { teamName });
+      const response = await axios.post('/api/auth/register', { teamName, gameId });
       onLogin(response.data.token, response.data.teamId, false);
     } catch (err) {
       setError(err.response?.data?.error || 'Registration failed');

@@ -1,41 +1,61 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Button, Typography, Alert } from '@mui/material';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Box, Typography, Alert } from '@mui/material';
+import QrScanner from 'qr-scanner';
 
 function QRScanner({ onScan, disabled }) {
+  const videoRef = useRef(null);
   const scannerRef = useRef(null);
   const [error, setError] = useState('');
-  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if (!scanning && scannerRef.current) {
-      const scanner = new Html5QrcodeScanner('qr-scanner', {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-      });
+    if (!videoRef.current) return;
 
-      scanner.render(
-        (decodedText) => {
-          onScan(decodedText);
-          setError('');
-        },
-        (error) => {
-          console.log('QR scan error:', error);
+    const scanner = new QrScanner(
+      videoRef.current,
+      (result) => {
+        if (!disabled) {
+          onScan(result.data);
         }
-      );
+      },
+      {
+        preferredCamera: 'environment',
+        highlightScanRegion: true,
+        highlightCodeOutline: true,
+      }
+    );
 
-      setScanning(true);
+    scannerRef.current = scanner;
 
-      return () => {
-        scanner.clear().catch((err) => console.log('Scanner cleanup error:', err));
-      };
+    scanner.start().catch((err) => {
+      console.error('QR Scanner start error:', err);
+      setError('Could not access camera. Please allow camera permissions.');
+    });
+
+    return () => {
+      scanner.stop();
+      scanner.destroy();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (scannerRef.current) {
+      if (disabled) {
+        scannerRef.current.pause();
+      } else {
+        scannerRef.current.start().catch(() => {});
+      }
     }
-  }, [onScan, scanning]);
+  }, [disabled]);
 
   return (
     <Box>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      <Box id="qr-scanner" sx={{ width: '100%', borderRadius: '8px', overflow: 'hidden' }} />
+      <Box sx={{ width: '100%', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+        <video
+          ref={videoRef}
+          style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '8px' }}
+        />
+      </Box>
       <Typography variant="caption" color="textSecondary" sx={{ mt: 2, display: 'block' }}>
         Point your camera at a QR code to scan
       </Typography>

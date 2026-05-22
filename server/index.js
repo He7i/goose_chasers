@@ -27,6 +27,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // API Routes
+app.use('/api/games', require('./routes/games'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/hints', require('./routes/hints'));
 app.use('/api/qrcodes', require('./routes/qrcodes'));

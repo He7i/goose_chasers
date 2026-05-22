@@ -3,29 +3,27 @@ const router = express.Router();
 const pool = require('../db/connection');
 const jwt = require('jsonwebtoken');
 
-// Login team
+// Login with existing team (select from dropdown)
 router.post('/login', async (req, res) => {
   try {
-    const { teamName } = req.body;
+    const { teamId } = req.body;
 
-    if (!teamName || teamName.trim().length === 0) {
-      return res.status(400).json({ error: 'Team name required' });
+    if (!teamId) {
+      return res.status(400).json({ error: 'Team ID required' });
     }
 
-    const connection = await pool.getConnection();
-    const [teams] = await connection.query(
-      'SELECT team_id, team_name, current_hint_id FROM easter_teams WHERE team_name = ?',
-      [teamName.trim()]
+    const result = await pool.query(
+      'SELECT team_id, team_name, game_id FROM teams WHERE team_id = $1',
+      [teamId]
     );
-    connection.release();
 
-    if (teams.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Team not found' });
     }
 
-    const team = teams[0];
+    const team = result.rows[0];
     const token = jwt.sign(
-      { teamId: team.team_id, teamName: team.team_name },
+      { teamId: team.team_id, teamName: team.team_name, gameId: team.game_id },
       process.env.JWT_SECRET || 'dev_secret',
       { expiresIn: '12h' }
     );
@@ -35,7 +33,6 @@ router.post('/login', async (req, res) => {
       token,
       teamId: team.team_id,
       teamName: team.team_name,
-      currentHintId: team.current_hint_id
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -43,24 +40,26 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Create team
+// Create new team for a game
 router.post('/register', async (req, res) => {
   try {
-    const { teamName } = req.body;
+    const { teamName, gameId } = req.body;
 
     if (!teamName || teamName.trim().length === 0) {
       return res.status(400).json({ error: 'Team name required' });
     }
+    if (!gameId) {
+      return res.status(400).json({ error: 'Game ID required' });
+    }
 
-    const connection = await pool.getConnection();
-    const [result] = await connection.query(
-      'INSERT INTO easter_teams (team_name) VALUES (?)',
-      [teamName.trim()]
+    const result = await pool.query(
+      'INSERT INTO teams (team_id, game_id, team_name) VALUES (gen_random_uuid(), $1, $2) RETURNING team_id, team_name',
+      [gameId, teamName.trim()]
     );
-    connection.release();
 
+    const team = result.rows[0];
     const token = jwt.sign(
-      { teamId: result.insertId, teamName: teamName.trim() },
+      { teamId: team.team_id, teamName: team.team_name, gameId },
       process.env.JWT_SECRET || 'dev_secret',
       { expiresIn: '12h' }
     );
@@ -68,15 +67,48 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       success: true,
       token,
-      teamId: result.insertId,
-      teamName: teamName.trim()
+      teamId: team.team_id,
+      teamName: team.team_name,
     });
   } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ error: 'Team name already exists' });
-    }
     console.error('Register error:', error);
     res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// Join as single player (creates a solo team)
+router.post('/solo', async (req, res) => {
+  try {
+    const { playerName, gameId } = req.body;
+
+    if (!playerName || playerName.trim().length === 0) {
+      return res.status(400).json({ error: 'Player name required' });
+    }
+    if (!gameId) {
+      return res.status(400).json({ error: 'Game ID required' });
+    }
+
+    const result = await pool.query(
+      'INSERT INTO teams (team_id, game_id, team_name) VALUES (gen_random_uuid(), $1, $2) RETURNING team_id, team_name',
+      [gameId, playerName.trim()]
+    );
+
+    const team = result.rows[0];
+    const token = jwt.sign(
+      { teamId: team.team_id, teamName: team.team_name, gameId },
+      process.env.JWT_SECRET || 'dev_secret',
+      { expiresIn: '12h' }
+    );
+
+    res.status(201).json({
+      success: true,
+      token,
+      teamId: team.team_id,
+      teamName: team.team_name,
+    });
+  } catch (error) {
+    console.error('Solo join error:', error);
+    res.status(500).json({ error: 'Failed to join as single player' });
   }
 });
 
